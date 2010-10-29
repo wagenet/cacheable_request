@@ -1,8 +1,15 @@
+// ==========================================================================
+// Project:   CacheableRequest - A Request Caching Framework for SproutCore
+// Copyright: ©2010 Strobe Inc., Peter Wagenet, and contributors.
+// License:   Licensed under MIT license (see license.js)
+// ==========================================================================
+
 /**
  KNOWN ISSUES
 
   - If original request errors quickly it may notify before the cache has loaded
   - We may want to avoid caching errors
+  - No cache size limits
 
 */
 
