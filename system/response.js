@@ -18,14 +18,6 @@ CacheableRequest.Response = SC.Response.extend({
   isCached: NO,
   isFinal: NO,
 
-  statusDidChange: function(){
-    console.log('statusDidChange', this.get('status'));
-  }.observes('status'),
-
-  isFinalDidChange: function(){
-    console.log('isFinalDidChange', this.get('isFinal'));
-  }.observes('isFinal'),
-
   originalResponse: null,
 
   // This assumes status gets changed last
@@ -44,8 +36,6 @@ CacheableRequest.Response = SC.Response.extend({
   }.observes('*originalResponse.status'),
 
   _updateFromOriginal: function(){
-    console.log('_updateFromOriginal');
-
     var response = this.get('originalResponse');
 
     this.beginPropertyChanges();
@@ -129,6 +119,8 @@ CacheableRequest.Response.mixin({
 
   findCached: function(response){
     var request = response.get('request');
+    if (!request) return;
+
     cached = this.database().find('responses', {
       isJSON:  request.get('isJSON') ? 1 : 0,
       isXML:   request.get('isXML')  ? 1 : 0,
@@ -139,11 +131,10 @@ CacheableRequest.Response.mixin({
     });
     cached.set('response', response); // Just for internal use
     cached.addObserver('status', this, '_didFindCached', request);
-    window._cachedResponse = cached;
   },
 
   _didFindCached: function(cached){
-    if (cached.get('status') & SC.Record.READY) {
+    if (cached.get('status') & SCLocalStorage.READY) {
       var data, response;
 
       cached.removeObserver('status', this, '_didFindCached');

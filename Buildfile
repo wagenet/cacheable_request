@@ -1,1 +1,1 @@
-config :cacheable_request, :required => ['sproutcore/foundation']
+config :cacheable_request, :required => ['sproutcore/foundation', :local_storage]

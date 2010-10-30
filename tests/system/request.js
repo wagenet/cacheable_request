@@ -1,5 +1,5 @@
 // ==========================================================================
-// CacheableRequest.Response Unit Test
+// CacheableRequest.Request Unit Test
 // ==========================================================================
 /*globals CacheableRequest */
 
