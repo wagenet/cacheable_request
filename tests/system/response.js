@@ -3,8 +3,14 @@
 // ==========================================================================
 /*globals CacheableRequest */
 
-var response, originalResponse, originalFindCached, originalCacheResponse,
-    findCachedCount, updateFromOriginalCount, cacheResponseCount, notifyCount, tryOriginalCount;
+var response, originalResponse, originalFindCached, originalCacheResponse, originalDatabaseCreate,
+    findCachedCount, updateFromOriginalCount, cacheResponseCount, notifyCount, tryOriginalCount,
+    databaseCreateParams, databaseTableParams, databaseFindParams, databaseInsertParams, databaseDestroyParams;
+
+
+function jsonCompare(a, b){
+  return SC.json.encode(a) == SC.json.encode(b);
+}
 
 
 module("CacheableRequest.Response: Basic", {
@@ -172,4 +178,130 @@ test("should call notify and _tryOriginal", function(){
   response.loadCache({});
   equals(notifyCount, 1, "should call notify");
   equals(tryOriginalCount, 1, "should call _tryOriginal");
+});
+
+
+
+module("CacheableRequest.Response: Class Methods", {
+  setup: function(){
+    originalDatabaseCreate = SCLocalStorage.SQLiteDatabase.create;
+    SCLocalStorage.SQLiteDatabase.create = function(){
+      databaseCreateParams = SC.A(arguments);
+      return {
+        createTable: function(){
+          databaseTableParams = SC.A(arguments);
+        },
+        find: function(){
+          databaseFindParams = SC.A(arguments);
+          return SC.Object.create();
+        },
+        insert: function(){
+          databaseInsertParams = SC.A(arguments);
+        },
+        destroy: function(){
+          databaseDestroyParams = SC.A(arguments);
+        }
+      }
+    };
+    CacheableRequest.Response.database(); // Initialize database
+    databaseCreateParams = null;
+    databaseTableParams = null;
+    databaseFindParams = null;
+    databaseInsertParams = null;
+    databaseDestroyParams = null;
+  },
+  teardown: function(){
+    SCLocalStorage.SQLiteDatabase.create = originalDatabaseCreate;
+    CacheableRequest.Response._database = null;
+  }
+});
+
+test("initialize database", function(){
+  CacheableRequest.Response._database = null;
+  CacheableRequest.Response.database();
+
+  ok(jsonCompare(databaseCreateParams[0], { name: 'CacheableRequest' }), "should create database named CacheableRequest");
+
+  equals(databaseTableParams[0], 'responses', "should create table named 'responses'");
+
+  var expected = {
+    isJSON:   'integer',
+    isXML:    'integer',
+    headers:  'text',
+    address:  'text',
+    type:     'text',
+    body:     'text',
+    response: 'text'
+  };
+  ok(jsonCompare(databaseTableParams[1], expected), "should have proper fields");
+});
+
+test("findCached", function(){
+  var ret = CacheableRequest.Response.findCached(SC.Object.create({
+    request: SC.Object.create({
+      isJSON: YES,
+      isXML: NO,
+      headers: null,
+      address: 'http://google.com',
+      type: 'GET',
+      body: null
+    })
+  }));
+
+  var expectedParams = {
+    isJSON: 1,
+    isXML: 0,
+    headers: 'null',
+    address: 'http://google.com',
+    type: 'GET',
+    body: ''
+  };
+  ok(jsonCompare(databaseFindParams, ['responses', expectedParams]), "should have proper find arguments");
+
+  // TODO: Test setting of response and observer
+});
+
+test("_didFindCached JSON", function(){
+  var loadCacheData;
+
+  var encodedBody = SC.json.encode({ a: 1 });
+
+  var cached = [{
+    response: SC.json.encode({
+      rawResponseText: encodedBody
+    })
+  }];
+  cached.set('status', SCLocalStorage.READY);
+  cached.set('response', SC.Object.create({
+    isJSON: YES,
+    isXML: NO,
+    loadCache: function(data){ loadCacheData = data; }
+  }));
+
+  CacheableRequest.Response._didFindCached(cached);
+
+  var expected = {
+    encodedBody: encodedBody
+  };
+  ok(jsonCompare(loadCacheData, expected), "should load proper data into cache");
+});
+
+test("_didFindCached XML", function(){
+  var loadCacheData;
+
+  var cached = [{
+    response: SC.json.encode({
+      rawResponseText: '<?xml version="1.0" encoding="UTF-8"?><item><name>Test</name></item>'
+    })
+  }];
+  cached.set('status', SCLocalStorage.READY);
+  cached.set('response', SC.Object.create({
+    isJSON: NO,
+    isXML: YES,
+    loadCache: function(data){ loadCacheData = data; }
+  }));
+
+  CacheableRequest.Response._didFindCached(cached);
+
+  equals(loadCacheData.encodedBody.getElementsByTagName('item')[0].textContent, 'Test', "should parse into xml");
 });

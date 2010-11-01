@@ -13,6 +13,8 @@
 
 */
 
+CacheableRequest.LOG_CACHING = NO;
+
 CacheableRequest.Response = SC.Response.extend({
 
   isCached: NO,
@@ -74,6 +76,7 @@ CacheableRequest.Response = SC.Response.extend({
 
   loadCache: function(data){
     if (!this.get('isFinal')) {
+      if (CacheableRequest.LOG_CACHING) console.log('CacheableRequest.Response: LOAD CACHE', data);
       this.beginPropertyChanges();
       this.set('timedOut', data.timedOut);
       this.set('isError', data.isError);
@@ -140,12 +143,28 @@ CacheableRequest.Response.mixin({
       cached.removeObserver('status', this, '_didFindCached');
 
       if (cached.get('length') === 0) {
-        console.log('No cache');
+        if (CacheableRequest.LOG_CACHING) console.log('CacheableRequest.Response: NO CACHE');
         return;
       }
 
       data = SC.json.decode(cached.objectAt(0).response);
       response = cached.get('response');
+
+      if (data.rawResponseText) {
+        if (response.get('isXML')) {
+          if (window.DOMParser) {
+            data.encodedBody = (new DOMParser()).parseFromString(data.rawResponseText,"text/xml");
+          } else {
+            // Internet Explorer
+            xmlDoc = new ActiveXObject("Microsoft.XMLDOM");
+            xmlDoc.async = "false";
+            data.encodedBody = xmlDoc.loadXML(data.rawResponseText); 
+          }
+        } else {
+          data.encodedBody = data.rawResponseText;
+        }
+        delete data.rawResponseText;
+      }
 
       SC.RunLoop.begin();
       response.loadCache(data);
@@ -165,13 +184,17 @@ CacheableRequest.Response.mixin({
       errorObject.errorValue = null;
     }
 
+    // Get raw response text, since we can't JSON encode the XML
+    var rawRequest = response.getPath('originalResponse.rawRequest'),
+        rawResponseText = rawRequest ? rawRequest.responseText : null;
+
     data = {
       status: response.get('status'),
       timedOut: response.get('timedOut'),
       isError: response.get('isError'),
       errorObject: errorObject,
       isCancelled: response.get('isCancelled'),
-      encodedBody: response.get('encodedBody')
+      rawResponseText: rawResponseText
     };
 
     baseValues = {
@@ -182,6 +205,8 @@ CacheableRequest.Response.mixin({
       type:     request.get('type'),
       body:     request.get('body') || '',
     };
+
+    if (CacheableRequest.LOG_CACHING) console.log('CacheableRequest.Response: CACHING', baseValues, data);
 
     this.database().destroy('responses', baseValues);
 
