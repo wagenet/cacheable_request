@@ -102,19 +102,31 @@ CacheableRequest.Response.mixin({
 
   database: function(){
     if (!this._database) {
-      this._database = SCLocalStorage.SQLiteDatabase.create({ name: 'CacheableRequest' });
+      var db = this._database = SCLocalStorage.SQLiteDatabase.create({ name: 'CacheableRequest' });
 
-      // Expand this to filter by more params like headers
-      this._database.createTable('responses', {
-        // Request data
-        isJSON:   'integer', // 0 or 1
-        isXML:    'integer', // 0 or 1
-        headers:  'text', // JSON
-        address:  'text',
-        type:     'text',
-        body:     'text',
-        response: 'text' // JSON
-      });
+      var version = Number(this._database.get('version'));
+
+      if (version < 0.1) {
+        // Expand this to filter by more params like headers
+        this._database.createTable('responses', {
+          // Request data
+          isJSON:   'integer', // 0 or 1
+          isXML:    'integer', // 0 or 1
+          headers:  'text', // JSON
+          address:  'text',
+          type:     'text',
+          body:     'text',
+          response: 'text' // JSON
+        }, {
+          success: function(){ db.set('version', '0.1'); }
+        });
+      }
+
+      if (version < 0.2) {
+        this._database.transaction("ALTER TABLE responses ADD COLUMN lastUsed INTEGER;", {
+          success: function(){ db.set('version', '0.2'); }
+        });
+      }
     }
 
     return this._database;
@@ -133,7 +145,7 @@ CacheableRequest.Response.mixin({
       body:    request.get('body') || ''
     });
     cached.set('response', response); // Just for internal use
-    cached.addObserver('status', this, '_didFindCached', request);
+    cached.addObserver('status', this, '_didFindCached');
   },
 
   _didFindCached: function(cached){
@@ -211,8 +223,27 @@ CacheableRequest.Response.mixin({
     this.database().destroy('responses', baseValues);
 
     this.database().insert('responses', SC.extend(baseValues, {
+      lastUsed: Date.now(),
       response: SC.json.encode(data)
     }));
+
+    this.cleanupCache();
+  },
+
+  cleanupCache: function(){
+    var lastUsed = SCLocalStorage.RecordArray.create();
+    this._database.transaction("SELECT lastUsed FROM responses ORDER BY lastUsed DESC LIMIT 10;", {
+      queryData: function(t, results){ lastUsed.set('rawResults', results); }
+    });
+    lastUsed.addObserver('status', this, '_didGetLastUsed');
+  },
+
+  _didGetLastUsed: function(response){
+    if (response.get('status') & SCLocalStorage.READY) {
+      response.removeObserver('status', this, '_didGetLastUsed');
+      var lastUsed = response.get('lastObject').lastUsed;
+      this._database.destroy('responses', ["lastUsed < ? OR lastUsed IS NULL", [lastUsed]]);
+    }
   }
 
 });
