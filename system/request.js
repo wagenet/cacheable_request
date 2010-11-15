@@ -74,7 +74,7 @@ CacheableRequest.Request.manager = SC.extend(SC.copy(SC.Request.manager, YES), {
     // Create standard request
     standardResponse = SC.Request.manager.sendRequest(request);
 
-    if (request.get('canCache')) {
+    if (request.get('canCache') && SCLocalStorage.SQLiteDatabase.isSupported) {
       // Get cached request
       cachedResponse = CacheableRequest.Response.create({ request: request, originalResponse: standardResponse });
     }
